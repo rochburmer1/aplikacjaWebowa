@@ -1,10 +1,12 @@
 import type { Project } from '../models/Project';
 import type { User } from '../models/User';
 import type { Story } from '../models/Story';
+import type { Task } from '../models/Task';
 
 export class LocalStorageService {
     private readonly PROJECTS_KEY = 'manageme_projects';
     private readonly STORIES_KEY = 'manageme_stories';
+    private readonly TASKS_KEY = "manageme_tasks";
     private readonly ACTIVE_PROJECT_KEY = 'manageme_active_project';
 
 
@@ -90,5 +92,98 @@ export class LocalStorageService {
         const stories = this.getStories();
         const filtered = stories.filter(s => s.id !== id);
         localStorage.setItem(this.STORIES_KEY, JSON.stringify(filtered));
+    }
+    
+    getTasks(historyjkaId?: string): Task[] {
+        const data = localStorage.getItem(this.TASKS_KEY);
+        const tasks: Task[] = data ? JSON.parse(data) : [];
+        if (historyjkaId) {
+            return tasks.filter(t => t.historyjkaId === historyjkaId);
+        }
+        return tasks;
+    }
+
+    createTask(task: Omit<Task, 'id' | 'dataDodania' | 'stan'>): Task {
+        const tasks = this.getTasks();
+        const newTask: Task = {
+            id: crypto.randomUUID(),
+            dataDodania: new Date().toISOString(),
+            stan: 'todo', 
+            ...task
+        };
+        tasks.push(newTask);
+        localStorage.setItem(this.TASKS_KEY, JSON.stringify(tasks));
+        
+        this.checkAndUpdateStoryState(newTask.historyjkaId);
+        
+        return newTask;
+    }
+
+    updateTask(id: string, taskData: Partial<Task>): Task {
+        const tasks = this.getTasks();
+        const index = tasks.findIndex(t => t.id === id);
+        if (index === -1) throw new Error('Nie znaleziono zadania');
+
+        const oldTask = tasks[index];
+        const updatedTask = { ...oldTask, ...taskData };
+
+        if (taskData.przypisanyUzytkownikId && oldTask.stan === 'todo' && updatedTask.stan !== 'done') {
+            updatedTask.stan = 'doing';
+            updatedTask.dataStartu = new Date().toISOString();
+        }
+
+        if (updatedTask.stan === 'doing' && oldTask.stan === 'todo' && !updatedTask.dataStartu) {
+            updatedTask.dataStartu = new Date().toISOString();
+        }
+
+        if (updatedTask.stan === 'done' && oldTask.stan !== 'done') {
+            updatedTask.dataZakonczenia = new Date().toISOString();
+        }
+
+        tasks[index] = updatedTask;
+        localStorage.setItem(this.TASKS_KEY, JSON.stringify(tasks));
+
+        this.checkAndUpdateStoryState(updatedTask.historyjkaId);
+
+        return updatedTask;
+    }
+
+    deleteTask(id: string): void {
+        const tasks = this.getTasks();
+        const taskToDelete = tasks.find(t => t.id === id);
+        if (taskToDelete) {
+            const filtered = tasks.filter(t => t.id !== id);
+            localStorage.setItem(this.TASKS_KEY, JSON.stringify(filtered));
+            
+            this.checkAndUpdateStoryState(taskToDelete.historyjkaId);
+        }
+    }
+
+    private checkAndUpdateStoryState(historyjkaId: string): void {
+        const stories = this.getStories();
+        const story = stories.find(s => s.id === historyjkaId);
+        if (!story) return;
+
+        const storyTasks = this.getTasks(historyjkaId);
+        
+        if (storyTasks.length === 0) {
+            if (story.stan !== 'todo') this.updateStory(historyjkaId, { stan: 'todo' });
+            return;
+        }
+
+        const allDone = storyTasks.every(t => t.stan === 'done');
+        const anyDoingOrDone = storyTasks.some(t => t.stan === 'doing' || t.stan === 'done');
+
+        if (allDone) {
+            if (story.stan !== 'done') this.updateStory(historyjkaId, { stan: 'done' });
+        } 
+
+        else if (anyDoingOrDone) {
+            if (story.stan !== 'doing') this.updateStory(historyjkaId, { stan: 'doing' });
+        } 
+
+        else {
+            if (story.stan !== 'todo') this.updateStory(historyjkaId, { stan: 'todo' });
+        }
     }
 }
