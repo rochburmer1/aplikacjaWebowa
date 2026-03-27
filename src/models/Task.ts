@@ -14,3 +14,4 @@ export interface Task{
     dataZakonczenia?: string;
     przypisanyUzytkownikId?: string;
 }
+//commit next
