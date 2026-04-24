@@ -12,7 +12,7 @@ const loggedUser = userService.getLoggedUser();
 const assignableUsers = userService.getAllUsers().filter(u => u.rola === 'developer' || u.rola === 'devops');
 
 function App() {
-  // --- OBSŁUGA MOTYWU (DARK/LIGHT MODE) ---
+  // --- OB.SŁUGA MOTYWU (DARK/LIGHT MODE) ---
   const [isDarkMode, setIsDarkMode] = useState(() => {
     if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
       return true;
