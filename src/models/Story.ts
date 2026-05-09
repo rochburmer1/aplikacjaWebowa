@@ -7,7 +7,7 @@ export interface Story {
     opis: string;
     priorytet: Priority;
     projektId: string;
-    dataUtworzenia: string; // Przechowujemy jako ISO string (np. "2023-10-25T10:00:00.000Z")
+    dataUtworzenia: string;  
     stan: Status;
     wlascicielId: string;
 }

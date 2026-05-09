@@ -1,18 +1,17 @@
-import type { Priority,Status } from "./Story";
+export type TaskPriority = 'niski' | 'średni' | 'wysoki';
+export type TaskStatus = 'todo' | 'doing' | 'done';
 
-export interface Task{
+export interface Task {
     id: string;
     nazwa: string;
     opis: string;
-    priorytet: Priority;
-    historyjkaId: string;
+    priorytet: TaskPriority;
+    historyjkaId: string; // Przypisanie do historyjki
     przewidywanyCzas: number;
-    przepracowaneGodziny?: number;
-    stan: Status;
-    dataDodania: string;
-    dataStartu?: string;
-    dataZakonczenia?: string;
-    przypisanyUzytkownikId?: string;
+    stan: TaskStatus;
+    dataDodania: string; // ISOString
+    dataStartu?: string; // Pojawia się, gdy przejdzie w 'doing'
+    dataZakonczenia?: string; // Pojawia się, gdy przejdzie w 'done'
+    przypisanyUzytkownikId?: string; // Dev lub DevOps
+    przepracowaneGodziny: number; // Z naszego poprzedniego kodu
 }
-//commit next
-//hh

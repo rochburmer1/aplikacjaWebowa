@@ -1,15 +1,82 @@
 import type { Project } from '../models/Project';
-import type { User } from '../models/User';
 import type { Story } from '../models/Story';
 import type { Task } from '../models/Task';
+import type { Notification } from '../models/Notification';
+import type { User, Role } from '../models/User';
+
+const SUPER_ADMIN_EMAIL = "roch.burmer@gmail.com";
 
 export class LocalStorageService {
     private readonly PROJECTS_KEY = 'manageme_projects';
     private readonly STORIES_KEY = 'manageme_stories';
-    private readonly TASKS_KEY = "manageme_tasks";
+    private readonly TASKS_KEY = 'manageme_tasks';
     private readonly ACTIVE_PROJECT_KEY = 'manageme_active_project';
+    private readonly NOTIFICATIONS_KEY = 'manageme_notifications';
+    private readonly USERS_KEY = 'manageme_users';
+    private readonly LOGGED_USER_KEY = 'manageme_logged_user';
 
+    // ==========================================
+    // AUTORYZACJA I UŻYTKOWNICY
+    // ==========================================
+    getUsers(): User[] {
+        const data = localStorage.getItem(this.USERS_KEY);
+        return data ? JSON.parse(data) : [];
+    }
 
+    getLoggedUser(): User | null {
+        const data = localStorage.getItem(this.LOGGED_USER_KEY);
+        return data ? JSON.parse(data) : null;
+    }
+
+    logout(): void {
+        localStorage.removeItem(this.LOGGED_USER_KEY);
+    }
+
+    updateUser(id: string, updates: Partial<User>): void {
+        const users = this.getUsers();
+        const index = users.findIndex(u => u.id === id);
+        if (index !== -1) {
+            users[index] = { ...users[index], ...updates };
+            localStorage.setItem(this.USERS_KEY, JSON.stringify(users));
+            
+            // Jeśli aktualizujemy zalogowanego użytkownika (samego siebie)
+            const logged = this.getLoggedUser();
+            if (logged && logged.id === id) {
+                localStorage.setItem(this.LOGGED_USER_KEY, JSON.stringify(users[index]));
+            }
+        }
+    }
+
+    handleGoogleLogin(email: string, imie: string, nazwisko: string): User {
+        const users = this.getUsers();
+        let user = users.find(u => u.email === email);
+
+        if (!user) {
+            // Rejestracja nowego użytkownika
+            const rola: Role = email === SUPER_ADMIN_EMAIL ? 'admin' : 'gosc';
+            user = { id: crypto.randomUUID(), email, imie, nazwisko, rola, isBlocked: false };
+            users.push(user);
+            localStorage.setItem(this.USERS_KEY, JSON.stringify(users));
+
+            // POWIADOMIENIE O NOWYM KONCIE
+            const admins = users.filter(u => u.rola === 'admin');
+            admins.forEach(admin => {
+                this.createNotification({
+                    title: 'Nowe konto w systemie',
+                    message: `Użytkownik ${imie} ${nazwisko} (${email}) zalogował się po raz pierwszy.`,
+                    priority: 'high',
+                    recipientId: admin.id
+                });
+            });
+        }
+
+        localStorage.setItem(this.LOGGED_USER_KEY, JSON.stringify(user));
+        return user;
+    }
+
+    // ==========================================
+    // LAB 2: AKTYWNY PROJEKT
+    // ==========================================
     getActiveProjectId(): string | null {
         return localStorage.getItem(this.ACTIVE_PROJECT_KEY);
     }
@@ -22,6 +89,9 @@ export class LocalStorageService {
         }
     }
 
+    // ==========================================
+    // LAB 2: PROJEKTY (CRUD)
+    // ==========================================
     getProjects(): Project[] {
         const data = localStorage.getItem(this.PROJECTS_KEY);
         return data ? JSON.parse(data) : [];
@@ -39,30 +109,19 @@ export class LocalStorageService {
         return newProject;
     }
 
-    updateProject(id: string, projectData: Partial<Project>): Project {
-        const projects = this.getProjects();
-        const index = projects.findIndex(p => p.id === id);
-        if (index === -1) throw new Error('Nie znaleziono projektu');
-        projects[index] = { ...projects[index], ...projectData };
-        localStorage.setItem(this.PROJECTS_KEY, JSON.stringify(projects));
-        return projects[index];
-    }
-
     deleteProject(id: string): void {
-        const projects = this.getProjects();
-        const filteredProjects = projects.filter(p => p.id !== id);
-        localStorage.setItem(this.PROJECTS_KEY, JSON.stringify(filteredProjects));
-        
-        if (this.getActiveProjectId() === id) {
-            this.setActiveProjectId(null);
-        }
+        const projects = this.getProjects().filter(p => p.id !== id);
+        localStorage.setItem(this.PROJECTS_KEY, JSON.stringify(projects));
     }
 
-    getStories(projectId?: string): Story[] {
+    // ==========================================
+    // LAB 2: HISTORYJKI (CRUD)
+    // ==========================================
+    getStories(projektId?: string): Story[] {
         const data = localStorage.getItem(this.STORIES_KEY);
         const stories: Story[] = data ? JSON.parse(data) : [];
-        if (projectId) {
-            return stories.filter(s => s.projektId === projectId);
+        if (projektId) {
+            return stories.filter(s => s.projektId === projektId);
         }
         return stories;
     }
@@ -71,7 +130,7 @@ export class LocalStorageService {
         const stories = this.getStories();
         const newStory: Story = {
             id: crypto.randomUUID(),
-            dataUtworzenia: new Date().toISOString(), // Data generuje się sama
+            dataUtworzenia: new Date().toISOString(),
             ...story
         };
         stories.push(newStory);
@@ -79,21 +138,25 @@ export class LocalStorageService {
         return newStory;
     }
 
-    updateStory(id: string, storyData: Partial<Story>): Story {
+    updateStory(id: string, updates: Partial<Story>): Story | undefined {
         const stories = this.getStories();
         const index = stories.findIndex(s => s.id === id);
-        if (index === -1) throw new Error('Nie znaleziono historyjki');
-        stories[index] = { ...stories[index], ...storyData };
-        localStorage.setItem(this.STORIES_KEY, JSON.stringify(stories));
-        return stories[index];
+        if (index !== -1) {
+            stories[index] = { ...stories[index], ...updates };
+            localStorage.setItem(this.STORIES_KEY, JSON.stringify(stories));
+            return stories[index];
+        }
+        return undefined;
     }
 
     deleteStory(id: string): void {
-        const stories = this.getStories();
-        const filtered = stories.filter(s => s.id !== id);
-        localStorage.setItem(this.STORIES_KEY, JSON.stringify(filtered));
+        const stories = this.getStories().filter(s => s.id !== id);
+        localStorage.setItem(this.STORIES_KEY, JSON.stringify(stories));
     }
-    
+
+    // ==========================================
+    // LAB 3: ZADANIA I AUTOMATYZACJA STATUSÓW
+    // ==========================================
     getTasks(historyjkaId?: string): Task[] {
         const data = localStorage.getItem(this.TASKS_KEY);
         const tasks: Task[] = data ? JSON.parse(data) : [];
@@ -103,71 +166,56 @@ export class LocalStorageService {
         return tasks;
     }
 
-    createTask(task: Omit<Task, 'id' | 'dataDodania' | 'stan'>): Task {
+    createTask(task: Omit<Task, 'id' | 'dataDodania'>): Task {
         const tasks = this.getTasks();
         const newTask: Task = {
             id: crypto.randomUUID(),
             dataDodania: new Date().toISOString(),
-            stan: 'todo', 
             ...task
         };
         tasks.push(newTask);
         localStorage.setItem(this.TASKS_KEY, JSON.stringify(tasks));
-        
         this.checkAndUpdateStoryState(newTask.historyjkaId);
-        
         return newTask;
     }
 
-    updateTask(id: string, taskData: Partial<Task>): Task {
+    updateTask(id: string, updates: Partial<Task>): Task | undefined {
         const tasks = this.getTasks();
         const index = tasks.findIndex(t => t.id === id);
-        if (index === -1) throw new Error('Nie znaleziono zadania');
+        if (index === -1) return undefined;
 
-        const oldTask = tasks[index];
-        const updatedTask = { ...oldTask, ...taskData };
+        let task = tasks[index];
 
-        if (taskData.przypisanyUzytkownikId && oldTask.stan === 'todo' && updatedTask.stan !== 'done') {
-            updatedTask.stan = 'doing';
-            updatedTask.dataStartu = new Date().toISOString();
+        if (updates.przypisanyUzytkownikId && task.stan === 'todo' && updates.stan !== 'done') {
+            updates.stan = 'doing';
+            updates.dataStartu = new Date().toISOString();
         }
 
-        if (updatedTask.stan === 'doing' && oldTask.stan === 'todo' && !updatedTask.dataStartu) {
-            updatedTask.dataStartu = new Date().toISOString();
+        if (updates.stan === 'done' && task.stan !== 'done') {
+            updates.dataZakonczenia = new Date().toISOString();
         }
 
-        if (updatedTask.stan === 'done' && oldTask.stan !== 'done') {
-            updatedTask.dataZakonczenia = new Date().toISOString();
-        }
-
-        tasks[index] = updatedTask;
+        tasks[index] = { ...task, ...updates };
         localStorage.setItem(this.TASKS_KEY, JSON.stringify(tasks));
+        this.checkAndUpdateStoryState(tasks[index].historyjkaId);
 
-        this.checkAndUpdateStoryState(updatedTask.historyjkaId);
-
-        return updatedTask;
+        return tasks[index];
     }
 
     deleteTask(id: string): void {
         const tasks = this.getTasks();
         const taskToDelete = tasks.find(t => t.id === id);
         if (taskToDelete) {
-            const filtered = tasks.filter(t => t.id !== id);
-            localStorage.setItem(this.TASKS_KEY, JSON.stringify(filtered));
-            
+            const filteredTasks = tasks.filter(t => t.id !== id);
+            localStorage.setItem(this.TASKS_KEY, JSON.stringify(filteredTasks));
             this.checkAndUpdateStoryState(taskToDelete.historyjkaId);
         }
     }
 
     private checkAndUpdateStoryState(historyjkaId: string): void {
-        const stories = this.getStories();
-        const story = stories.find(s => s.id === historyjkaId);
-        if (!story) return;
-
         const storyTasks = this.getTasks(historyjkaId);
-        
         if (storyTasks.length === 0) {
-            if (story.stan !== 'todo') this.updateStory(historyjkaId, { stan: 'todo' });
+            this.updateStory(historyjkaId, { stan: 'todo' });
             return;
         }
 
@@ -175,15 +223,42 @@ export class LocalStorageService {
         const anyDoingOrDone = storyTasks.some(t => t.stan === 'doing' || t.stan === 'done');
 
         if (allDone) {
-            if (story.stan !== 'done') this.updateStory(historyjkaId, { stan: 'done' });
-        } 
+            this.updateStory(historyjkaId, { stan: 'done' });
+        } else if (anyDoingOrDone) {
+            this.updateStory(historyjkaId, { stan: 'doing' });
+        } else {
+            this.updateStory(historyjkaId, { stan: 'todo' });
+        }
+    }
 
-        else if (anyDoingOrDone) {
-            if (story.stan !== 'doing') this.updateStory(historyjkaId, { stan: 'doing' });
-        } 
+    // ==========================================
+    // LAB 5: POWIADOMIENIA
+    // ==========================================
+    getNotifications(userId: string): Notification[] {
+        const data = localStorage.getItem(this.NOTIFICATIONS_KEY);
+        const notifications: Notification[] = data ? JSON.parse(data) : [];
+        return notifications
+            .filter(n => n.recipientId === userId)
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }
 
-        else {
-            if (story.stan !== 'todo') this.updateStory(historyjkaId, { stan: 'todo' });
+    createNotification(notif: Omit<Notification, 'id' | 'date' | 'isRead'>): Notification {
+        const notifications = localStorage.getItem(this.NOTIFICATIONS_KEY) 
+            ? JSON.parse(localStorage.getItem(this.NOTIFICATIONS_KEY)!) : [];
+        const newNotif: Notification = { id: crypto.randomUUID(), date: new Date().toISOString(), isRead: false, ...notif };
+        notifications.push(newNotif);
+        localStorage.setItem(this.NOTIFICATIONS_KEY, JSON.stringify(notifications));
+        return newNotif;
+    }
+
+    markNotificationAsRead(id: string): void {
+        const data = localStorage.getItem(this.NOTIFICATIONS_KEY);
+        if (!data) return;
+        const notifications: Notification[] = JSON.parse(data);
+        const index = notifications.findIndex(n => n.id === id);
+        if (index !== -1) {
+            notifications[index].isRead = true;
+            localStorage.setItem(this.NOTIFICATIONS_KEY, JSON.stringify(notifications));
         }
     }
 }
