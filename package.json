@@ -9,6 +9,8 @@
     "preview": "vite preview"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
+    "@types/node": "^25.6.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.4",
@@ -20,6 +22,7 @@
   },
   "dependencies": {
     "@react-oauth/google": "^0.13.5",
+    "firebase": "^12.13.0",
     "jwt-decode": "^4.0.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
